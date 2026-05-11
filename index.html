@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+<title>Cartographie Cérébrale — Nicolas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Mono:wght@300;400&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#06080b;color:#ede9e1;font-family:'DM Mono',monospace;touch-action:none;-webkit-text-size-adjust:none}
+
+/* INTRO */
+#intro{position:fixed;inset:0;z-index:999;background:#06080b;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 32px;text-align:center;transition:opacity 0.8s}
+#intro.out{opacity:0;pointer-events:none}
+#intro .ey{font-size:0.52rem;letter-spacing:0.3em;text-transform:uppercase;color:rgba(237,233,225,0.35)}
+#intro h1{font-family:'Cormorant Garamond',serif;font-size:2.6rem;font-weight:300;line-height:1.1}
+#intro p{font-size:0.6rem;color:rgba(237,233,225,0.42);letter-spacing:0.1em;line-height:2}
+#intro button{margin-top:16px;padding:14px 38px;background:none;border:1px solid rgba(255,255,255,0.2);color:#ede9e1;font-family:'DM Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;cursor:pointer;border-radius:0}
+
+/* CANVAS & SVG */
+#cv{position:fixed;top:0;left:0;width:100%;height:100%;display:block;touch-action:none}
+#svgl{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+
+/* HEADER */
+#hd{position:fixed;top:0;left:0;right:0;z-index:200;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;pointer-events:none}
+#hd h1{font-family:'Cormorant Garamond',serif;font-size:0.95rem;font-weight:300;letter-spacing:0.1em;text-shadow:0 1px 8px #000,0 0 20px #000}
+.st{font-size:0.5rem;color:#5aaa7a;letter-spacing:0.1em;display:flex;align-items:center;gap:6px;text-shadow:0 1px 4px #000}
+.st::before{content:'';width:5px;height:5px;border-radius:50%;background:#5aaa7a;animation:bl 2s infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:0.2}}
+
+/* HINT */
+#hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-size:0.46rem;letter-spacing:0.1em;color:rgba(237,233,225,0.22);pointer-events:none;white-space:nowrap;transition:opacity 1.5s;z-index:100;text-shadow:0 1px 4px #000}
+#hint.gone{opacity:0}
+
+/* PANEL */
+#panel{position:fixed;left:0;right:0;bottom:0;height:50%;z-index:400;background:rgba(6,8,11,0.97);backdrop-filter:blur(20px);border-top:1px solid rgba(255,255,255,0.09);transform:translateY(102%);transition:transform 0.55s cubic-bezier(0.23,1,0.32,1);display:flex;flex-direction:column;border-radius:16px 16px 0 0;box-shadow:0 -20px 60px -20px rgba(0,0,0,0.8)}
+#panel.up{transform:translateY(0)}
+.dh{width:36px;height:3px;border-radius:2px;background:rgba(255,255,255,0.15);margin:10px auto 0;flex-shrink:0}
+.ph{padding:10px 18px 10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;position:relative}
+.phl{flex:1;min-width:0}
+.ph-anat{font-size:0.46rem;letter-spacing:0.18em;text-transform:uppercase;color:rgba(237,233,225,0.35);margin-bottom:3px}
+.ph-title{font-family:'Cormorant Garamond',serif;font-size:1.25rem;font-weight:400;line-height:1.2;margin-bottom:2px}
+.ph-sub{font-size:0.5rem;color:rgba(237,233,225,0.38);font-style:italic;letter-spacing:0.05em}
+.ph-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0}
+.ph-val{font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:400}
+.ph-vl{font-size:0.42rem;letter-spacing:0.1em;text-transform:uppercase;color:rgba(237,233,225,0.3)}
+.pcl{position:absolute;top:8px;right:14px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:rgba(237,233,225,0.5);font-size:0.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pcl:active{opacity:0.4}
+#ps{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 18px 32px}
+#ps::-webkit-scrollbar{width:2px}
+#ps::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.07)}
+.sec{margin-bottom:16px}
+.sl{font-size:0.44rem;letter-spacing:0.2em;text-transform:uppercase;color:rgba(237,233,225,0.28);padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.05);margin-bottom:9px}
+.bloc{margin-bottom:7px;padding:9px 11px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-left:2px solid}
+.bsc{font-size:0.48rem;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;opacity:0.65}
+.bpa{font-size:0.66rem;line-height:1.82;color:#ede9e1;font-weight:300}
+.cit{padding:9px 12px;border-left:2px solid;background:rgba(255,255,255,0.015);margin:4px 0 8px}
+.citt{font-family:'Cormorant Garamond',serif;font-size:0.85rem;font-style:italic;line-height:1.8;font-weight:300}
+.evo{font-size:0.66rem;line-height:1.85;color:rgba(237,233,225,0.45);font-weight:300}
+</style>
+</head>
+<body>
+
+<div id="intro">
+  <div class="ey">Confidentiel · Usage personnel</div>
+  <h1>Cartographie<br>Cérébrale</h1>
+  <p>Nicolas L. · 22 ans · Normandie<br>Session d'introspection · Mai 2026</p>
+  <button onclick="enterApp()">Explorer mon cerveau →</button>
+</div>
+
+<div id="hd">
+  <h1>Cartographie Cérébrale</h1>
+  <div class="st">En réorientation active</div>
+</div>
+
+<canvas id="cv"></canvas>
+<svg id="svgl" xmlns="http://www.w3.org/2000/svg"></svg>
+
+<div id="hint">Pincer pour zoomer · Glisser pour tourner · Taper sur une zone</div>
+
+<div id="panel">
+  <div class="dh"></div>
+  <div class="ph">
+    <div class="phl">
+      <div class="ph-anat" id="phanat"></div>
+      <div class="ph-title" id="phtitle"></div>
+      <div class="ph-sub" id="phsub"></div>
+    </div>
+    <div class="ph-right">
+      <div class="ph-val" id="phval"></div>
+      <div class="ph-vl">Intensité</div>
+    </div>
+    <button class="pcl" onclick="closePanel()">✕</button>
+  </div>
+  <div id="ps"></div>
+</div>
+
+<script>
+// ── DONNÉES ───────────────────────────────────────────────────────────────────
+const ZONES = [
+  {id:'frontal', anat:'Lobe Frontal', perso:'Aires Cognitives', hex:'#c060b0', col:0xc060b0, intensite:92, lx:0.0, ly:0.45, lz:0.9,
+   blocs:[{sc:'Cortex préfrontal — planification & vision stratégique', pa:'Vision multidimensionnelle : Licence Banque sept. 2026 + contenu IA + entrepreneuriat. Compatible Fondateur à 94%.'},
+          {sc:'Métacognition — analyse de ses propres mécanismes', pa:'Nomme ses patterns en temps réel. "J\'avais enchaîné trop de sorties pour oublier les refus." Lucidité rare à 22 ans.'},
+          {sc:'Intelligence situationnelle — effort optimal', pa:'Bac : stratégie ciblée le jour J → 12. Terminale : 2 semaines de sprint → meilleure note du groupe. Pas l\'effort max, l\'effort optimal.'},
+          {sc:'Plasticité neuronale — apprentissage accéléré', pa:'En 9 mois croupier blackjack, dépasse des pros expérimentés. Combine apprentissage rapide, excellence interne et lecture de l\'adversaire.'}],
+   cit:'"Pas l\'effort maximal, mais l\'effort optimal au bon moment."', evo:'Zone la plus active. En pleine construction de nouveaux circuits neuronaux.'},
+  {id:'parietal', anat:'Lobe Pariétal', perso:'Aires Somesthésiques — Toucher', hex:'#4888d8', col:0x4888d8, intensite:72, lx:0.0, ly:0.9, lz:0.05,
+   blocs:[{sc:'Cortex somesthésique — traitement des sensations tactiles', pa:'Rejet du contact physique non sollicité. L\'inconfort est réel, pas une posture.'},
+          {sc:'Sélectivité tactile — signal de confiance', pa:'Exception intime totale : très câlin en couple. Autoriser le contact est une marque de confiance rare.'},
+          {sc:'Corps comme baromètre de transition', pa:'Musculation 2019-2021 : pic physique jan-juil 2023. Reprise sport 7 mai 2026.'}],
+   cit:'"Mon corps sait des choses que ma tête n\'a pas encore formulées."', evo:'En mode protection renforcée depuis janvier 2026.'},
+  {id:'temporal', anat:'Lobe Temporal', perso:'Audition · Mémoire · Langage', hex:'#38a860', col:0x38a860, intensite:87, lx:-0.92, ly:0.0, lz:0.22,
+   blocs:[{sc:'Cortex auditif — traitement musical & émotionnel', pa:'The Lumineers, Hollow Coves, Radical Face — folk contemplatif depuis 2021.'},
+          {sc:'Aire de Broca — langage & communication sociale', pa:'8 inconnus engagés en une soirée. Statut de leader attribué spontanément.'},
+          {sc:'Solitude intellectuelle paradoxale', pa:'Hyperconnecté socialement, mais personne autour ne partage ses vrais centres d\'intérêt.'}],
+   cit:'"La musique, c\'est le seul endroit où je n\'ai pas besoin de mon armure."', evo:'Point fort stable.'},
+  {id:'occipital', anat:'Lobe Occipital', perso:'Vision & Projection Stratégique', hex:'#d85828', col:0xd85828, intensite:80, lx:0.0, ly:0.1, lz:-1.0,
+   blocs:[{sc:'Cortex visuel — projection et imagerie mentale', pa:'Vision ultime précise : entreprise reconnue + famille + maison semi-rurale + liberté financière.'},
+          {sc:'Vigilance stratégique — lecture des dynamiques', pa:'Arte géopolitique, podcasts IA, histoire mondiale.'},
+          {sc:'Peur profonde — moteur de réussite', pa:'Prouver que le petit Népalais adopté est devenu chef d\'entreprise reconnu.'}],
+   cit:'"La vision est le filet de sens qui rattrape toujours avant le fond."', evo:'Zone stable et en expansion.'},
+  {id:'moteur', anat:'Cortex Moteur', perso:'Aires Motrices — Apprentissage Gestuel', hex:'#48b858', col:0x48b858, intensite:88, lx:0.25, ly:0.88, lz:0.42,
+   blocs:[{sc:'Cortex moteur primaire — exécution & apprentissage gestuel', pa:'Apprentissage moteur anormalement accéléré. En 9 mois croupier, dépasse des pros.'},
+          {sc:'Mémoire procédurale — automatismes corporels', pa:'Judo 7 ans. Profil explosivité/sprint/HIIT.'}],
+   cit:'"3 semaines de régularité et le corps d\'avant revient."', evo:'Reprise amorcée le 7 mai 2026.'},
+  {id:'amygdale', anat:'Amygdale', perso:'Émotions — Peur & Protection', hex:'#e02838', col:0xe02838, intensite:88, lx:0.6, ly:-0.22, lz:0.48,
+   blocs:[{sc:'Amygdale — encodage de la peur', pa:'Relation toxique de 9 mois encodée comme référence de danger.'},
+          {sc:'Méfiance sélective — protection post-traumatique', pa:'Protection active du cœur : incapable de donner sa confiance totale.'}],
+   cit:'"J\'ai jamais autant apprécié être seul."', evo:'Zone hyperactive depuis janvier 2026.'},
+  {id:'hippocampe', anat:'Hippocampe', perso:'Mémoire & Marqueurs Temporels', hex:'#d4a820', col:0xd4a820, intensite:75, lx:-0.55, ly:-0.28, lz:0.38,
+   blocs:[{sc:'Hippocampe — consolidation de la mémoire', pa:'Carnaval de Caen, mars 2026 encodé comme point de bascule.'}],
+   cit:'"Le corps mémorise ce que la tête n\'a pas encore accepté."', evo:'Marqueur stabilisé.'},
+  {id:'dopamine', anat:'Système Dopaminergique', perso:'Circuit de Récompense — Recalibrage', hex:'#e09030', col:0xe09030, intensite:78, lx:0.12, ly:-0.05, lz:0.65,
+   blocs:[{sc:'Noyau accumbens — circuit de la récompense', pa:'Désensibilisation à l\'alcool depuis mars 2026.'},
+          {sc:'Redirection vers nouvelles sources de dopamine', pa:'Contenu IA, stratégie, apprentissage.'}],
+   cit:'"Comme si mon corps me disait que c\'est la fin d\'un cycle."', evo:'Recalibrage en cours depuis mai 2026.'}
+];
+
+let notes = {};
+let intensites = {};
+ZONES.forEach(z => intensites[z.id] = z.intensite);
+
+function loadData() {
+  const savedNotes = localStorage.getItem('brainMap_notes');
+  const savedInt = localStorage.getItem('brainMap_intensities');
+  if (savedNotes) notes = JSON.parse(savedNotes);
+  if (savedInt) Object.assign(intensites, JSON.parse(savedInt));
+}
+function saveData() {
+  localStorage.setItem('brainMap_notes', JSON.stringify(notes));
+  localStorage.setItem('brainMap_intensities', JSON.stringify(intensites));
+}
+loadData();
+
+let activeId = null;
+let W = window.innerWidth, H = window.innerHeight;
+
+// ── THREE.JS ──────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(W, H);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0c12);
+scene.fog = new THREE.Fog(0x06080b, 5.5, 18);
+
+const camera = new THREE.PerspectiveCamera(40, W/H, 0.1, 100);
+camera.position.set(0, 0.15, 5.0);
+
+// Éclairage dramatique
+scene.add(new THREE.AmbientLight(0xaaaaaa, 0.35));
+const keyLight = new THREE.DirectionalLight(0xffeedd, 1.15); keyLight.position.set(5,8,6); scene.add(keyLight);
+const rimLight = new THREE.DirectionalLight(0x88ccff, 0.75); rimLight.position.set(-6,3,-8); scene.add(rimLight);
+const fillLight = new THREE.DirectionalLight(0x99aaff, 0.5); fillLight.position.set(-4,-2,5); scene.add(fillLight);
+
+const brain = new THREE.Group();
+scene.add(brain);
+
+function mat(c, r=0.62) {
+  return new THREE.MeshStandardMaterial({color:c, roughness:r, metalness:0.1});
+}
+
+function lobe(rx, ry, rz, seg=32) {
+  const g = new THREE.SphereGeometry(1, seg, Math.round(seg*0.75));
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x=p.getX(i), y=p.getY(i), z=p.getZ(i);
+    let d = Math.sin(x*6.8+z*4.5)*Math.cos(y*5.9)*0.065 + Math.cos(x*4.2+y*6.8)*Math.sin(z*5.2)*0.052 + Math.sin(y*8.4+z*3.2)*Math.cos(x*4.9)*0.038;
+    d -= Math.abs(Math.sin(x*9.5+y*7.2))*0.028;
+    d += Math.sin(x*15+y*12+z*10)*0.015;
+    p.setXYZ(i, x*rx+d*rx, y*ry+d*ry*0.88, z*rz+d*rz);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+// Lobes (segments réduits pour perf)
+brain.add(new THREE.Mesh(lobe(1.1,0.92,0.9,32), mat(0xc858b0))).position.set(-0.5,0.04,0.52);
+brain.add(new THREE.Mesh(lobe(1.1,0.92,0.9,32), mat(0xc858b0))).position.set(0.5,0.04,0.52);
+brain.add(new THREE.Mesh(lobe(0.9,0.8,0.85,28), mat(0x4880d0))).position.set(-0.46,0.6,-0.04);
+brain.add(new THREE.Mesh(lobe(0.9,0.8,0.85,28), mat(0x4880d0))).position.set(0.46,0.6,-0.04);
+brain.add(new THREE.Mesh(lobe(0.76,0.6,0.85,28), mat(0x38a058))).position.set(-0.94,-0.3,0.16);
+brain.add(new THREE.Mesh(lobe(0.76,0.6,0.85,28), mat(0x38a058))).position.set(0.94,-0.3,0.16);
+brain.add(new THREE.Mesh(lobe(0.8,0.74,0.7,28), mat(0xd05525))).position.set(-0.42,0.05,-0.92);
+brain.add(new THREE.Mesh(lobe(0.8,0.74,0.7,28), mat(0xd05525))).position.set(0.42,0.05,-0.92);
+brain.add(new THREE.Mesh(lobe(0.52,0.42,0.68,24), mat(0x46b055))).position.set(-0.28,0.8,0.26);
+brain.add(new THREE.Mesh(lobe(0.52,0.42,0.68,24), mat(0x46b055))).position.set(0.28,0.8,0.26);
+
+// Structures internes
+brain.add(new THREE.Mesh(new THREE.SphereGeometry(0.14,20,16), mat(0xe02535,0.5))).position.set(-0.7,-0.26,0.5);
+brain.add(new THREE.Mesh(new THREE.SphereGeometry(0.14,20,16), mat(0xe02535,0.5))).position.set(0.7,-0.26,0.5);
+
+const hgeo = new THREE.SphereGeometry(1,16,12);
+for (let i=0;i<hgeo.attributes.position.count;i++) {
+  hgeo.attributes.position.setY(i, hgeo.attributes.position.getY(i)*1.8);
+  hgeo.attributes.position.setX(i, hgeo.attributes.position.getX(i)*0.55);
+  hgeo.attributes.position.setZ(i, hgeo.attributes.position.getZ(i)*0.55);
+}
+const hmat = mat(0xd4a020,0.5);
+const hl = new THREE.Mesh(hgeo, hmat); hl.scale.set(0.18,0.18,0.18); hl.position.set(-0.55,-0.3,0.2); hl.rotation.z=0.3; brain.add(hl);
+const hr = new THREE.Mesh(hgeo, hmat); hr.scale.set(0.18,0.18,0.18); hr.position.set(0.55,-0.3,0.2); hr.rotation.z=-0.3; brain.add(hr);
+
+brain.add(new THREE.Mesh(new THREE.SphereGeometry(0.17,20,16), mat(0xe08828,0.6))).position.set(0,-0.06,0.32);
+
+// ── Hit zones & Highlights ───────────────────────────────────────────────────
+const hitDefs = [
+  {id:'frontal', p:[0,0.18,0.52], r:0.78},
+  {id:'parietal', p:[0,0.68,0], r:0.65},
+  {id:'temporal', p:[-0.92,-0.28,0.18], r:0.52},
+  {id:'occipital', p:[0,0.08,-0.92], r:0.62},
+  {id:'moteur', p:[0,0.88,0.28], r:0.42},
+  {id:'amygdale', p:[-0.7,-0.26,0.5], r:0.22},
+  {id:'hippocampe', p:[-0.55,-0.28,0.2], r:0.2},
+  {id:'dopamine', p:[0,-0.06,0.32], r:0.25}
+];
+
+const hitMeshes = [];
+hitDefs.forEach(h => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(h.r,14,10), new THREE.MeshBasicMaterial({transparent:true,opacity:0}));
+  m.position.set(...h.p);
+  m.userData.zone = ZONES.find(z=>z.id===h.id);
+  brain.add(m); hitMeshes.push(m);
+});
+
+const highlights = {};
+hitDefs.forEach((h,i) => {
+  const zone = ZONES[i];
+  const hl = new THREE.Mesh(new THREE.SphereGeometry(h.r*1.08,24,20),
+    new THREE.MeshStandardMaterial({color:zone.col, emissive:zone.col, emissiveIntensity:0.12, roughness:0.5, metalness:0.15, transparent:true, opacity:0, blending:THREE.AdditiveBlending}));
+  hl.position.set(...h.p);
+  brain.add(hl);
+  highlights[zone.id] = hl;
+});
+
+// ── Labels SVG ───────────────────────────────────────────────────────────────
+const svgEl = document.getElementById('svgl');
+const lbls = {};
+ZONES.forEach(z => {
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  const line = document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('stroke','rgba(255,255,255,0.3)'); line.setAttribute('stroke-width','0.8');
+  const dot = document.createElementNS('http://www.w3.org/2000/svg','circle'); dot.setAttribute('r','3'); dot.setAttribute('fill',z.hex);
+  const t1 = document.createElementNS('http://www.w3.org/2000/svg','text'); t1.setAttribute('fill','rgba(255,255,255,0.88)'); t1.setAttribute('font-family','DM Mono,monospace'); t1.setAttribute('font-size','7'); t1.setAttribute('letter-spacing','0.7'); t1.textContent = z.anat.toUpperCase();
+  const t2 = document.createElementNS('http://www.w3.org/2000/svg','text'); t2.setAttribute('fill',z.hex); t2.setAttribute('font-family','Cormorant Garamond,serif'); t2.setAttribute('font-size','8.5'); t2.setAttribute('font-style','italic'); t2.textContent = z.perso;
+  g.append(line,dot,t1,t2); svgEl.appendChild(g);
+  lbls[z.id] = {g,line,dot,t1,t2};
+});
+
+const _v3 = new THREE.Vector3();
+function proj(x,y,z){ _v3.set(x,y,z); brain.localToWorld(_v3); _v3.project(camera); return {x:(_v3.x*0.5+0.5)*W, y:(-_v3.y*0.5+0.5)*H, behind:_v3.z>1}; }
+
+function updateLabels(){
+  const pUp = document.getElementById('panel').classList.contains('up');
+  const maxY = pUp ? H*0.48 : H-30;
+  ZONES.forEach(z => {
+    const lb = lbls[z.id];
+    const sc = proj(z.lx,z.ly,z.lz);
+    if(sc.behind||sc.x<8||sc.x>W-8||sc.y<55||sc.y>maxY){ lb.g.setAttribute('opacity','0'); return; }
+    const isA = activeId===z.id;
+    lb.g.setAttribute('opacity', isA ? '1' : (activeId ? '0.28' : '0.82'));
+    lb.dot.setAttribute('cx',sc.x); lb.dot.setAttribute('cy',sc.y);
+    const left = sc.x < W/2;
+    const ex = left ? sc.x-52 : sc.x+52;
+    const ey = sc.y-16;
+    lb.line.setAttribute('x1',sc.x); lb.line.setAttribute('y1',sc.y);
+    lb.line.setAttribute('x2',ex); lb.line.setAttribute('y2',ey);
+    const anc = left?'end':'start';
+    const tx = left ? ex-3 : ex+3;
+    lb.t1.setAttribute('x',tx); lb.t1.setAttribute('y',ey-7); lb.t1.setAttribute('text-anchor',anc);
+    lb.t2.setAttribute('x',tx); lb.t2.setAttribute('y',ey+5); lb.t2.setAttribute('text-anchor',anc);
+  });
+}
+
+// ── Contrôles ───────────────────────────────────────────────────────────────
+let rotX=0.08, rotY=0, tRX=0.08, tRY=0;
+let drag=false, moved=false, sx=0, sy=0, px=0, py=0;
+let camZ=5.0, pinch=false, pd=0, autoR=true;
+const ray = new THREE.Raycaster(), mv = new THREE.Vector2();
+const clock = new THREE.Clock();
+
+canvas.addEventListener('touchstart', e=>{
+  if(e.touches.length===2){pinch=true;pd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); return;}
+  if(e.touches[0].clientY > H*0.5 && document.getElementById('panel').classList.contains('up')) return;
+  drag=true; moved=false; px=sx=e.touches[0].clientX; py=sy=e.touches[0].clientY; autoR=false;
+},{passive:true});
+
+canvas.addEventListener('touchmove', e=>{
+  if(e.touches.length===2 && pinch){
+    e.preventDefault();
+    const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    camZ = Math.max(2, Math.min(9, camZ + (pd-d)*0.025));
+    pd = d; return;
+  }
+  if(!drag || e.touches.length!==1) return;
+  if(e.touches[0].clientY > H*0.5 && document.getElementById('panel').classList.contains('up')) return;
+  e.preventDefault();
+  tRY += (e.touches[0].clientX-px)*0.009;
+  tRX += (e.touches[0].clientY-py)*0.006;
+  tRX = Math.max(-0.8, Math.min(0.8, tRX));
+  px = e.touches[0].clientX; py = e.touches[0].clientY;
+  if(Math.abs(px-sx)>8 || Math.abs(py-sy)>8) moved=true;
+},{passive:false});
+
+canvas.addEventListener('touchend',()=>{ pinch=false; drag=false; if(!moved) tap(sx,sy); setTimeout(()=>{if(!drag)autoR=true;},4000); });
+
+function tap(cx,cy){
+  mv.x = (cx/W)*2-1; mv.y = -(cy/H)*2+1;
+  ray.setFromCamera(mv, camera);
+  const hits = ray.intersectObjects(hitMeshes);
+  if(hits.length>0 && hits[0].object.userData.zone) openPanel(hits[0].object.userData.zone);
+}
+
+// Mouse fallback
+canvas.addEventListener('mousedown', e=>{drag=true;moved=false;px=sx=e.clientX;py=sy=e.clientY;autoR=false;});
+canvas.addEventListener('mousemove', e=>{if(!drag)return; tRY+=(e.clientX-px)*0.007; tRX+=(e.clientY-py)*0.005; tRX=Math.max(-0.8,Math.min(0.8,tRX)); px=e.clientX;py=e.clientY; if(Math.abs(px-sx)>5||Math.abs(py-sy)>5)moved=true;});
+canvas.addEventListener('mouseup', e=>{drag=false; if(!moved)tap(e.clientX,e.clientY); setTimeout(()=>{if(!drag)autoR=true;},4000);});
+canvas.addEventListener('wheel', e=>{camZ=Math.max(2,Math.min(9,camZ+e.deltaY*0.007));},{passive:true});
+
+// ── Panel ─────────────────────────────────────────────────────────────────────
+function openPanel(zone){
+  activeId = zone.id;
+  ZONES.forEach(z=>{ if(highlights[z.id]) highlights[z.id].material.opacity=0; });
+  const hl = highlights[zone.id];
+  if(hl) hl.material.opacity = 0.35;
+
+  document.getElementById('phanat').textContent = 'Zone Neurologique · '+zone.anat;
+  document.getElementById('phtitle').textContent = zone.perso;
+  document.getElementById('phtitle').style.color = zone.hex;
+  document.getElementById('phsub').textContent = '→ '+zone.anat;
+  document.getElementById('phval').textContent = intensites[zone.id]+'%';
+  document.getElementById('phval').style.color = zone.hex;
+
+  const today = new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
+  let html = `<div class="sec"><div class="sl">Neurologie & Patterns</div>` +
+    zone.blocs.map(b => `<div class="bloc" style="border-left-color:${zone.hex}"><div class="bsc" style="color:${zone.hex}">${b.sc}</div><div class="bpa">${b.pa}</div></div>`).join('') + `</div>` +
+    (zone.cit ? `<div class="sec"><div class="sl">Observation clé</div><div class="cit" style="border-color:${zone.hex}"><div class="citt">${zone.cit}</div></div></div>` : '') +
+    `<div class="sec"><div class="sl">Évolution</div><div class="evo">${zone.evo}</div></div>` +
+    `<div class="sec"><div class="sl">Niveau d'activation</div><div class="ir"><span class="il">Intensité</span><span class="iv" id="iv_${zone.id}" style="color:${zone.hex}">${intensites[zone.id]}%</span></div>` +
+    `<div class="itr"><div class="ifi" id="if_${zone.id}" style="background:${zone.hex};width:0%"></div></div>` +
+    `<input type="range" min="0" max="100" value="${intensites[zone.id]}" style="accent-color:${zone.hex}" oninput="updI('${zone.id}',this.value)">` +
+    `<div class="ih"><span>Inactif</span><span>Hyperactif</span></div></div>` +
+    `<div class="sec"><div class="sl">Note personnelle</div><div class="nb"><div class="nl">Journal</div><div class="nd">${today}</div>` +
+    `<textarea placeholder="Ce que je ressens dans cette zone..." oninput="svN('${zone.id}',this.value)">${notes[zone.id]||''}</textarea></div></div>`;
+
+  document.getElementById('ps').innerHTML = html;
+  document.getElementById('panel').classList.add('up');
+  setTimeout(()=>{ 
+    const fi = document.getElementById('if_'+zone.id);
+    if(fi) fi.style.width = intensites[zone.id]+'%';
+  }, 100);
+  document.getElementById('hint').classList.add('gone');
+}
+
+window.closePanel = function(){
+  activeId = null;
+  document.getElementById('panel').classList.remove('up');
+  ZONES.forEach(z => {if(highlights[z.id]) highlights[z.id].material.opacity=0;});
+};
+
+window.updI = function(id, val){
+  intensites[id] = parseInt(val);
+  saveData();
+  const iv = document.getElementById('iv_'+id);
+  const fi = document.getElementById('if_'+id);
+  if(iv) iv.textContent = val+'%';
+  if(fi) fi.style.width = val+'%';
+  document.getElementById('phval').textContent = val+'%';
+};
+
+window.svN = function(id, val){
+  notes[id] = val;
+  saveData();
+};
+
+window.enterApp = function(){
+  document.getElementById('intro').classList.add('out');
+  setTimeout(()=>{document.getElementById('intro').style.display='none';},800);
+  setTimeout(()=>{document.getElementById('hint').classList.add('gone');},6000);
+};
+
+// ── Animation ─────────────────────────────────────────────────────────────────
+function animate(){
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  if(autoR && !drag) tRY += 0.0018;
+  rotX = rotX*0.92 + tRX*0.08;
+  rotY = rotY*0.92 + tRY*0.08;
+  brain.rotation.x = rotX;
+  brain.rotation.y = rotY;
+
+  const current = camera.position.length();
+  camera.position.normalize().multiplyScalar(current*0.94 + camZ*0.06);
+
+  const breath = 1 + Math.sin(t*0.45)*0.0038;
+  brain.scale.setScalar(breath);
+
+  // Pulsation highlights
+  ZONES.forEach(zone => {
+    const hl = highlights[zone.id];
+    if(hl){
+      const pulse = Math.sin(t*2.8 + intensites[zone.id])*0.5 + 0.5;
+      const i = intensites[zone.id]/100;
+      hl.material.emissiveIntensity = 0.15 + i*(0.9 + pulse*0.4);
+      hl.material.opacity = 0.18 + i*0.45;
+    }
+  });
+
+  updateLabels();
+  renderer.render(scene, camera);
+}
+animate();
+
+// Resize
+window.addEventListener('resize', ()=>{
+  W = window.innerWidth; H = window.innerHeight;
+  camera.aspect = W/H; camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+  svgEl.setAttribute('viewBox','0 0 '+W+' '+H);
+  svgEl.setAttribute('width',W); svgEl.setAttribute('height',H);
+});
+</script>
+</body>
+</html>
