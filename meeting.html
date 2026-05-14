@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+<title>My Brain — Réunions Stratégiques</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;min-height:100%;background:#FAF8F4;-webkit-text-size-adjust:none}
+  #root{min-height:100vh}
+  textarea,input,select,button{font-family:'DM Sans',sans-serif;outline:none}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:#E8E0D0;cursor:pointer;width:100%}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;background:#3D6B4A;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.2)}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#3D6B4A;cursor:pointer;border:none}
+  ::-webkit-scrollbar{width:3px}
+  ::-webkit-scrollbar-thumb{background:#D8D0C0;border-radius:2px}
+  ::placeholder{color:#B0A898}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+// ── DESIGN TOKENS ─────────────────────────────────────────────────────────────
+const C = {
+  cream: "#FAF8F4", creamDark: "#F0EBE3", creamMid: "#F5F1EB",
+  green: "#3D6B4A", greenLight: "#A8C5A0", greenPale: "#E8F0E9",
+  border: "#E8E0D0", text: "#1A1A1A", muted: "#7A7A7A",
+  red: "#C0392B", redPale: "#FDECEA",
+  amber: "#D4860A", amberPale: "#FEF6E4",
+  emerald: "#2D6A4F", emeraldPale: "#E8F5EE",
+  blue: "#2C5F8A", bluePale: "#E8F0F8",
+};
+const T = { title: "'Cormorant Garamond', Georgia, serif", body: "'DM Sans', sans-serif" };
+
+// ── MON PROFIL ────────────────────────────────────────────────────────────────
+const ME = {
+  D: 76, E: 45, O: 82, C: 55, M: 88, F: 80,
+  nom: "Nicolas",
+  forces: ["Charisme", "Lecture comportementale", "Adaptabilité"],
+  failles: ["Constance", "Finalisation de projets", "Résistance à l'ennui"],
+};
+
+// ── SCORING ENGINE ────────────────────────────────────────────────────────────
+const ScoringEngine = {
+  LIEU_S:  { "Son terrain": 30, "Terrain neutre": 50, "Mon terrain": 70, "En ligne": 45 },
+  TIMING_S:{ "Urgence forte": 25, "Timing normal": 50, "Temps ouvert": 75 },
+  ENJEU_S: { "Faible": 75, "Moyen": 50, "Élevé": 30, "Critique": 15 },
+  RELAT_S: { "Froide": 25, "Tiède": 50, "Chaude": 80 },
+  MULT:    { "Négociation": 1.3, "Décision critique": 1.5, "Séduction": 1.1, "Networking": 1.0, "Autre": 1.0 },
+
+  ctxScore(ctx) {
+    return Math.round(
+      (this.LIEU_S[ctx.lieu]    ?? 50) * 0.25 +
+      (this.TIMING_S[ctx.timing]?? 50) * 0.25 +
+      (this.ENJEU_S[ctx.enjeu]  ?? 50) * 0.25 +
+      (this.RELAT_S[ctx.relation]?? 50) * 0.25
+    );
+  },
+  calcSC(me, o) {
+    return Math.round(Math.min(100, Math.max(0,
+      100 - (0.30*Math.abs(me.D-o.D) + 0.25*Math.abs(me.E-o.E) +
+             0.25*Math.abs(me.O-o.O) + 0.20*Math.abs(me.C-o.C))
+    )));
+  },
+  calcPD(o, cs) {
+    return Math.round(Math.min(100, Math.max(0,
+      0.35*o.O + 0.25*o.M + 0.20*o.F + 0.10*(100-o.E) + 0.10*cs
+    )));
+  },
+  calcSF(me, o, cs) {
+    return Math.round(Math.min(100, Math.max(0,
+      0.40*Math.abs(me.D-o.D) + 0.30*o.E + 0.20*(100-o.F) + 0.10*(100-cs)
+    )));
+  },
+  calcAll(me, o, ctx, obj) {
+    const cs  = this.ctxScore(ctx);
+    const SC  = this.calcSC(me, o);
+    const PD  = this.calcPD(o, cs);
+    const SF  = this.calcSF(me, o, cs);
+    const m   = this.MULT[obj] ?? 1.0;
+    const raw = Math.round(0.40*SC + 0.35*PD + 0.25*(100-SF));
+    const SGR = Math.round(Math.min(100, raw / m));
+    const P_pos = Math.min(93, Math.round((PD/100)*(SC/100)*(1-SF/100)*100));
+    const P_neg = Math.min(93, Math.round((1-PD/100)*(SF/100)*(o.D/100)*100));
+    const P_neu = Math.max(5, 100 - P_pos - P_neg);
+    return { SC, cs, PD, SF, SGR, mult: m, raw, P_pos, P_neu, P_neg };
+  },
+};
+
+// ── QUESTIONNAIRE MODULES ──────────────────────────────────────────────────────
+const Q_MODULES = [
+  {
+    id: 0, title: "Style Décisionnel", color: C.blue,
+    desc: "Comment prend-elle ses décisions importantes ?",
+    questions: [
+      { id:"q0", text:"Face à un choix important, elle…", options:[
+        { label:"Décide vite et avec assurance",        d:{ D:+22, C:-8 } },
+        { label:"Analyse longuement avant d'agir",      d:{ C:+22, D:-8, O:-5 } },
+        { label:"Consulte et cherche le consensus",     d:{ F:+18, D:-12, E:+8 } },
+        { label:"Suit son intuition et ses valeurs",    d:{ O:+18, M:+12, C:-5 } },
+      ]},
+      { id:"q1", text:"Face à un risque, elle a tendance à…", options:[
+        { label:"Foncer — les risques se gèrent",       d:{ D:+22, O:+8, F:-5 } },
+        { label:"Analyser minutieusement avant",        d:{ C:+22, D:-12, O:-8 } },
+        { label:"Chercher des alternatives sûres",      d:{ F:+18, O:+12, D:-8 } },
+        { label:"Éviter — la stabilité prime",          d:{ C:+12, F:-18, O:-18, D:-5 } },
+      ]},
+      { id:"q2", text:"Son rapport à l'autorité hiérarchique ?", options:[
+        { label:"Challenge si nécessaire",              d:{ D:+25, C:-8, F:-8 } },
+        { label:"Respecte la structure et les règles",  d:{ C:+25, D:-18, F:+8 } },
+        { label:"S'adapte selon le contexte",           d:{ F:+22, E:+8, O:+5 } },
+        { label:"Préfère l'autonomie totale",           d:{ O:+18, D:+12, F:-8, C:-5 } },
+      ]},
+    ],
+  },
+  {
+    id: 1, title: "Communication & Relation", color: C.green,
+    desc: "Comment communique-t-elle avec les autres ?",
+    questions: [
+      { id:"q3", text:"En réunion, elle…", options:[
+        { label:"Prend la parole en premier et dirige", d:{ D:+25, E:+8, C:-5 } },
+        { label:"Anime l'énergie et les échanges",      d:{ E:+28, D:+5, O:+8 } },
+        { label:"Pose des questions pertinentes",       d:{ C:+18, O:+12, E:-5 } },
+        { label:"Écoute attentivement avant d'intervenir", d:{ F:+18, E:-12, C:+12, O:+5 } },
+      ]},
+      { id:"q4", text:"Son style de communication est…", options:[
+        { label:"Direct et percutant",                  d:{ D:+22, E:-5, C:-5 } },
+        { label:"Expressif et émotionnel",              d:{ E:+25, D:-8, O:+8 } },
+        { label:"Précis et factuel",                    d:{ C:+25, E:-12, D:-5 } },
+        { label:"Diplomate et nuancé",                  d:{ F:+22, E:+8, D:-12, C:+5 } },
+      ]},
+      { id:"q5", text:"Sa relation aux autres en général ?", options:[
+        { label:"Réseau large, beaucoup de contacts",   d:{ E:+25, F:+8, D:-5 } },
+        { label:"Cercle intime restreint et profond",   d:{ E:-18, C:+12, M:+8, D:+5 } },
+        { label:"Relations professionnelles d'abord",   d:{ D:+12, C:+8, E:-8, F:-5 } },
+        { label:"Naturellement curieux des autres",     d:{ O:+22, E:+12, F:+5 } },
+      ]},
+    ],
+  },
+  {
+    id: 2, title: "Motivations & Valeurs", color: C.amber,
+    desc: "Qu'est-ce qui drive profondément cette personne ?",
+    questions: [
+      { id:"q6", text:"Ce qui la motive le plus dans son travail ?", options:[
+        { label:"Le pouvoir et la reconnaissance",       d:{ D:+25, M:+18, E:+5 } },
+        { label:"L'impact et le sens profond",           d:{ M:+25, O:+12, C:-5 } },
+        { label:"La maîtrise et l'excellence",           d:{ C:+22, M:+12, D:+5 } },
+        { label:"La liberté et la créativité",           d:{ O:+25, F:+12, C:-12, D:-8 } },
+      ]},
+      { id:"q7", text:"Face au changement, elle…", options:[
+        { label:"L'embrasse — ce sont des opportunités", d:{ O:+25, F:+18, C:-8 } },
+        { label:"S'adapte après analyse",                d:{ C:+12, F:+12, O:+5 } },
+        { label:"Résiste — la stabilité prime",          d:{ C:+18, O:-22, F:-18, D:-5 } },
+        { label:"Impulse elle-même le changement",       d:{ D:+22, O:+18, C:-12, F:-5 } },
+      ]},
+      { id:"q8", text:"Ses valeurs dominantes ?", options:[
+        { label:"Performance et résultats",              d:{ D:+22, M:+18, C:+8, O:-5 } },
+        { label:"Authenticité et relations",             d:{ E:+18, M:+12, O:+8, C:-5 } },
+        { label:"Sécurité et cohérence",                 d:{ C:+22, F:-12, O:-12, D:-5 } },
+        { label:"Innovation et exploration",             d:{ O:+28, F:+18, C:-18, D:-5 } },
+      ]},
+    ],
+  },
+  {
+    id: 3, title: "Comportement Social", color: C.red,
+    desc: "Comment se comporte-t-elle en situation de groupe ?",
+    questions: [
+      { id:"q9", text:"Dans un groupe, elle est généralement…", options:[
+        { label:"Le leader naturel",                     d:{ D:+28, E:+12, F:-5 } },
+        { label:"L'animateur de l'énergie",              d:{ E:+25, O:+12, D:-5 } },
+        { label:"L'expert et la ressource",              d:{ C:+22, E:-12, M:+8 } },
+        { label:"Le médiateur et facilitateur",          d:{ F:+25, E:+8, D:-18, O:+5 } },
+      ]},
+      { id:"q10", text:"Sa ponctualité et son organisation ?", options:[
+        { label:"Irréprochable — très structuré(e)",     d:{ C:+28, F:+8, O:-5 } },
+        { label:"Variable selon les priorités",          d:{ D:+12, C:-8, F:-5, O:+5 } },
+        { label:"Parfois en retard mais créatif(ve)",    d:{ E:+12, O:+8, C:-18, F:-8 } },
+        { label:"Improvise souvent — flux naturel",      d:{ O:+18, C:-25, F:-8, E:+5 } },
+      ]},
+      { id:"q11", text:"Son rapport aux conflits ?", options:[
+        { label:"Affronte directement — préfère la clarté", d:{ D:+28, F:-8, E:+5 } },
+        { label:"Cherche une solution win-win",          d:{ F:+22, E:+12, D:-8, O:+5 } },
+        { label:"Évite — l'harmonie d'abord",            d:{ F:+18, D:-25, E:+8, C:+5 } },
+        { label:"Utilise les conflits pour avancer",     d:{ D:+18, O:+18, C:-8, F:-12 } },
+      ]},
+    ],
+  },
+];
+
+// ── TACTICAL ADVICE ────────────────────────────────────────────────────────────
+function getTacticalAdvice(me, other, ctx, obj, scores) {
+  const { D, E, O, C, M, F } = other;
+  const { SC, PD, SF, SGR } = scores;
+
+  const angle =
+    D >= 70 ? "Approche directe — allez droit au but, montrez les résultats concrets." :
+    E >= 70 ? "Approche relationnelle — créez d'abord la connexion émotionnelle." :
+    O >= 70 ? "Approche innovante — cadrez comme une opportunité unique et créative." :
+    C >= 70 ? "Approche analytique — structurez avec données, preuves et logique." :
+              "Approche équilibrée — adaptez-vous à son rythme et construisez la confiance.";
+
+  const opening =
+    ctx.relation === "Chaude" && E >= 50
+      ? "Commencez par un moment personnel bref (max 90 sec), puis orientez naturellement vers l'objectif."
+      : ctx.relation === "Froide" || D >= 65
+      ? "Allez directement au cœur du sujet — établissez votre légitimité dans les 90 premières secondes."
+      : "Posez une question ouverte sur leur contexte actuel pour activer leur réflexion avant de proposer.";
+
+  const args = [];
+  if (M >= 65) args.push("Liez explicitement à leurs objectifs et ambitions à long terme");
+  if (O >= 60) args.push("Soulignez l'aspect innovant et les nouvelles possibilités ouvertes");
+  if (C >= 65) args.push("Appuyez chaque point avec des données concrètes et des exemples précis");
+  if (D >= 65) args.push("Montrez l'impact immédiat et les gains tangibles mesurables");
+  if (E >= 65) args.push("Utilisez des anecdotes vivantes et créez des images mentales fortes");
+  if (F >= 65) args.push("Proposez plusieurs options flexibles plutôt qu'une seule voie");
+  if (!args.length) args.push("Construisez sur des points de convergence pour créer un terrain d'accord");
+
+  const avoid = [];
+  if (D >= 65) avoid.push("Paraître hésitant ou manquer de cap clair");
+  if (E >= 65) avoid.push("Le jargon froid ou les présentations trop chargées");
+  if (C >= 70) avoid.push("Toute approximation ou chiffre non vérifié — ce sera noté");
+  if (O < 40)  avoid.push("Les propositions trop disruptives ou risquées d'emblée");
+  if (F < 40)  avoid.push("Changer les paramètres ou l'ordre du jour en cours de réunion");
+  if (SF >= 60) avoid.push("La confrontation directe — contournez les résistances avec souplesse");
+  if (!avoid.length) avoid.push("La précipitation — laissez la conversation respirer naturellement");
+
+  const power =
+    Math.abs(me.D - D) > 30
+      ? me.D > D
+        ? "Position dominante — calibrez votre assertivité, laissez de l'espace décisionnel à l'autre."
+        : "Compensez le déficit d'assertivité par une préparation irréprochable et une expertise affirmée."
+      : "Dynamique équilibrée — focalisez sur la collaboration et les intérêts communs.";
+
+  const signals = [];
+  if (E >= 60) signals.push("Contact visuel soutenu + sourire fréquent = engagement fort");
+  if (D >= 60) signals.push("Posture penchée en avant = intérêt · Bras croisés = résistance");
+  if (C >= 65) signals.push("Questions de détail posées = signe positif d'implication");
+  signals.push("Silence long après votre proposition = réflexion en cours — ne le remplissez pas");
+  if (SF >= 50) signals.push("Changement de sujet soudain = résistance — revenez doucement");
+
+  const openQuestions = [
+    D >= 60 ? "Qu'est-ce qui vous ferait dire que c'est une réussite ?" : null,
+    E >= 60 ? "Comment vous sentez-vous par rapport à cette situation ?" : null,
+    O >= 60 ? "Quelle serait pour vous la solution idéale sans contrainte ?" : null,
+    C >= 60 ? "Quels critères utilisez-vous pour évaluer cette décision ?" : null,
+    "Qu'est-ce qui est le plus important pour vous dans ce sujet ?",
+  ].filter(Boolean).slice(0, 3);
+
+  return { angle, opening, args, avoid, power, signals, openQuestions };
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const SGRc  = (v) => v >= 70 ? C.emerald : v >= 50 ? C.amber : C.red;
+const SGRbg = (v) => v >= 70 ? C.emeraldPale : v >= 50 ? C.amberPale : C.redPale;
+const SGRl  = (v) => v >= 70 ? "Favorable" : v >= 50 ? "Stratégie requise" : "Risque élevé";
+
+function countdown(d, h) {
+  if (!d) return null;
+  const target = new Date(`${d}T${h || "00:00"}`);
+  const t = target - new Date();
+  if (t <= 0) return "Passée";
+  const j  = Math.floor(t / 86400000);
+  const hr = Math.floor((t % 86400000) / 3600000);
+  const m  = Math.floor((t % 3600000) / 60000);
+  return j > 0 ? `Dans ${j}j ${hr}h` : hr > 0 ? `Dans ${hr}h ${m}min` : `Dans ${m}min`;
+}
+
+function fmtDate(d) {
+  if (!d) return "";
+  return new Date(d + "T12:00").toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" });
+}
+
+function applyQuestionnaire(answers) {
+  const r = { D:50, E:50, O:50, C:50, M:50, F:50 };
+  Q_MODULES.forEach(mod => {
+    mod.questions.forEach(q => {
+      const idx = answers[mod.id]?.[q.id];
+      if (idx !== undefined) {
+        const opt = q.options[idx];
+        if (opt) Object.entries(opt.d).forEach(([k, v]) => {
+          r[k] = Math.min(100, Math.max(0, r[k] + v));
+        });
+      }
+    });
+  });
+  Object.keys(r).forEach(k => { r[k] = Math.round(r[k]); });
+  return r;
+}
+
+const OBJECTIFS = ["Négociation", "Décision critique", "Séduction", "Networking", "Autre"];
+const LIEUX     = ["Son terrain", "Terrain neutre", "Mon terrain", "En ligne"];
+const TIMINGS   = ["Urgence forte", "Timing normal", "Temps ouvert"];
+const ENJEUX    = ["Faible", "Moyen", "Élevé", "Critique"];
+const RELATIONS = ["Froide", "Tiède", "Chaude"];
+
+const AXIS = {
+  D: { label:"Dominance",    lo:"Conciliant",    hi:"Dominant"   },
+  E: { label:"Expressivité", lo:"Réservé",        hi:"Expressif"  },
+  O: { label:"Ouverture",    lo:"Conventionnel", hi:"Ouvert"     },
+  C: { label:"Rigueur",      lo:"Souple",        hi:"Rigoureux"  },
+  M: { label:"Motivation",   lo:"Passif",        hi:"Ambitieux"  },
+  F: { label:"Flexibilité",  lo:"Figé",          hi:"Adaptable"  },
+};
+
+const EMPTY = {
+  nom:"", objectif:"Négociation", date:"", heure:"", notes:"",
+  context:{ lieu:"Terrain neutre", timing:"Timing normal", enjeu:"Moyen", relation:"Tiède" },
+  other:{ D:50, E:50, O:50, C:50, M:50, F:50 },
+  questionnaire:{},
+  history:[],
+};
+
+// ── UI COMPONENTS ─────────────────────────────────────────────────────────────
+function Btn({ children, onClick, variant="primary", small, disabled, full, style={} }) {
+  const base = {
+    display:"inline-flex", alignItems:"center", justifyContent:"center",
+    gap:6, cursor:disabled ? "not-allowed" : "pointer",
+    border:"none", borderRadius:8, fontFamily:T.body, fontWeight:500,
+    fontSize:small ? 13 : 14, padding:small ? "7px 14px" : "10px 20px",
+    transition:"all 0.15s", width:full ? "100%" : "auto", opacity:disabled ? 0.5 : 1,
+  };
+  const variants = {
+    primary:   { background:C.green, color:"#fff" },
+    secondary: { background:"transparent", color:C.green, border:`1px solid ${C.green}` },
+    ghost:     { background:"transparent", color:C.muted, border:`1px solid ${C.border}` },
+    danger:    { background:C.redPale, color:C.red, border:`1px solid ${C.red}` },
+  };
+  return (
+    <button onClick={disabled ? undefined : onClick} style={{...base, ...variants[variant], ...style}}>
+      {children}
+    </button>
+  );
+}
+
+function Card({ children, style={}, onClick, pad=16 }) {
+  return (
+    <div onClick={onClick} style={{
+      background:"#fff", border:`1px solid ${C.border}`, borderRadius:12,
+      padding:pad, cursor:onClick ? "pointer" : "default",
+      boxShadow:"0 1px 4px rgba(0,0,0,0.04)", ...style
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function GaugeCircle({ value, size=80, color=C.green, label }) {
+  const r    = (size - 10) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (value / 100) * circ;
+  return (
+    <div style={{ display:"inline-flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+      <div style={{ position:"relative", width:size, height:size }}>
+        <svg width={size} height={size} style={{ position:"absolute", inset:0, transform:"rotate(-90deg)" }}>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={C.border} strokeWidth={7}/>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={7}
+            strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+            style={{ transition:"stroke-dasharray 0.6s ease" }}/>
+        </svg>
+        <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <span style={{ fontSize:Math.round(size*0.28), fontWeight:700, color, fontFamily:T.title }}>{value}</span>
+        </div>
+      </div>
+      {label && <div style={{ fontSize:11, color:C.muted, textAlign:"center" }}>{label}</div>}
+    </div>
+  );
+}
+
+function AxisBar({ label, value, lo, hi, color=C.green }) {
+  return (
+    <div style={{ marginBottom:10 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+        <span style={{ fontSize:12, fontWeight:500, color:C.text }}>{label}</span>
+        <span style={{ fontSize:12, fontWeight:600, color }}>{value}</span>
+      </div>
+      <div style={{ height:5, background:C.creamDark, borderRadius:3, overflow:"hidden" }}>
+        <div style={{ height:"100%", width:`${value}%`, background:color, borderRadius:3,
+          transition:"width 0.5s ease" }}/>
+      </div>
+      {(lo || hi) && (
+        <div style={{ display:"flex", justifyContent:"space-between", marginTop:3 }}>
+          <span style={{ fontSize:10, color:C.muted }}>{lo}</span>
+          <span style={{ fontSize:10, color:C.muted }}>{hi}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionTitle({ title }) {
+  return (
+    <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase",
+      color:C.muted, marginBottom:10, paddingBottom:8, borderBottom:`1px solid ${C.border}` }}>
+      {title}
+    </div>
+  );
+}
+
+// ── CALC PANEL ────────────────────────────────────────────────────────────────
+function CalcPanel({ scores }) {
+  if (!scores) return null;
+  const { SC, PD, SF, SGR, P_pos, P_neu, P_neg } = scores;
+  return (
+    <Card pad={16}>
+      <div style={{ marginBottom:14 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+          <span style={{ fontSize:13, fontWeight:600 }}>Score Global Réunion</span>
+          <span style={{ fontSize:24, fontWeight:700, color:SGRc(SGR), fontFamily:T.title }}>{SGR}</span>
+        </div>
+        <div style={{ height:7, background:C.creamDark, borderRadius:4, overflow:"hidden" }}>
+          <div style={{ height:"100%", width:`${SGR}%`, background:SGRc(SGR), borderRadius:4,
+            transition:"width 0.6s ease" }}/>
+        </div>
+        <div style={{ marginTop:8, display:"inline-flex" }}>
+          <span style={{ fontSize:12, fontWeight:600, color:SGRc(SGR),
+            background:SGRbg(SGR), padding:"3px 12px", borderRadius:20 }}>
+            {SGRl(SGR)}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
+        {[
+          { label:"Synergie",   v:SC, inv:false },
+          { label:"Réceptivité",v:PD, inv:false },
+          { label:"Friction",   v:SF, inv:true  },
+        ].map(({ label, v, inv }) => {
+          const good = inv ? v <= 40 : v >= 60;
+          const warn = inv ? v <= 65 : v >= 45;
+          const col  = good ? C.emerald : warn ? C.amber : C.red;
+          const bg   = good ? C.emeraldPale : warn ? C.amberPale : C.redPale;
+          return (
+            <div key={label} style={{ background:bg, borderRadius:8, padding:"10px 8px", textAlign:"center" }}>
+              <div style={{ fontSize:20, fontWeight:700, color:col, fontFamily:T.title }}>{v}</div>
+              <div style={{ fontSize:10, color:C.muted, marginTop:2 }}>{label}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display:"flex", gap:6 }}>
+        {[
+          { label:"Résultat positif", v:P_pos, color:C.emerald, bg:C.emeraldPale },
+          { label:"Neutre",           v:P_neu, color:C.amber,   bg:C.amberPale },
+          { label:"Difficile",        v:P_neg, color:C.red,     bg:C.redPale },
+        ].map(item => (
+          <div key={item.label} style={{ flex:1, background:item.bg, borderRadius:8,
+            padding:"8px 6px", textAlign:"center" }}>
+            <div style={{ fontSize:16, fontWeight:700, color:item.color, fontFamily:T.title }}>{item.v}%</div>
+            <div style={{ fontSize:10, color:C.muted, marginTop:2, lineHeight:1.2 }}>{item.label}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── FICHE PRÉPA ────────────────────────────────────────────────────────────────
+function FichePrepa({ meeting, scores, myProfile }) {
+  if (!meeting || !scores) return null;
+  const adv = getTacticalAdvice(myProfile, meeting.other, meeting.context, meeting.objectif, scores);
+
+  return (
+    <div>
+      <CalcPanel scores={scores} />
+      <div style={{ height:14 }}/>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Profil Comportemental Estimé"/>
+        {Object.entries(AXIS).map(([k, { label, lo, hi }]) => {
+          const v = meeting.other[k];
+          const col = v >= 65 ? C.green : v <= 35 ? C.red : C.amber;
+          return <AxisBar key={k} label={label} value={v} lo={lo} hi={hi} color={col}/>;
+        })}
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Angle d'Approche Recommandé"/>
+        <div style={{ background:C.bluePale, borderRadius:8, padding:"12px 14px",
+          fontSize:13, lineHeight:1.65, color:C.blue, fontWeight:500 }}>
+          {adv.angle}
+        </div>
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Ouverture Suggérée"/>
+        <div style={{ background:C.greenPale, borderRadius:8, padding:"12px 14px",
+          fontSize:13, lineHeight:1.65, color:C.emerald, fontStyle:"italic" }}>
+          "{adv.opening}"
+        </div>
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Arguments à Privilégier"/>
+        {adv.args.map((a, i) => (
+          <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:7 }}>
+            <span style={{ color:C.green, fontWeight:700, flexShrink:0, marginTop:1 }}>›</span>
+            <span style={{ fontSize:13, lineHeight:1.55, color:C.text }}>{a}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="À Éviter Absolument"/>
+        {adv.avoid.map((a, i) => (
+          <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:7 }}>
+            <span style={{ color:C.red, fontWeight:700, flexShrink:0, marginTop:1 }}>✕</span>
+            <span style={{ fontSize:13, lineHeight:1.55, color:C.text }}>{a}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Dynamique de Pouvoir"/>
+        <div style={{ background:C.amberPale, borderRadius:8, padding:"12px 14px",
+          fontSize:13, lineHeight:1.65, color:C.amber, fontWeight:500 }}>
+          {adv.power}
+        </div>
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Questions Stratégiques à Poser"/>
+        {adv.openQuestions.map((q, i) => (
+          <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:7 }}>
+            <span style={{ color:C.blue, fontWeight:700, flexShrink:0, marginTop:1 }}>?</span>
+            <span style={{ fontSize:13, lineHeight:1.55, color:C.text, fontStyle:"italic" }}>"{q}"</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Signaux à Surveiller"/>
+        {adv.signals.map((s, i) => (
+          <div key={i} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:7 }}>
+            <span style={{ color:C.amber, fontWeight:700, flexShrink:0, marginTop:1 }}>◉</span>
+            <span style={{ fontSize:13, lineHeight:1.55, color:C.text }}>{s}</span>
+          </div>
+        ))}
+      </div>
+
+      {meeting.notes && (
+        <div style={{ marginBottom:18 }}>
+          <SectionTitle title="Notes Personnelles"/>
+          <div style={{ fontSize:13, lineHeight:1.65, color:C.text, whiteSpace:"pre-wrap",
+            background:C.creamMid, borderRadius:8, padding:"12px 14px" }}>
+            {meeting.notes}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom:18 }}>
+        <SectionTitle title="Contexte de la Réunion"/>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          {[
+            { label:"Lieu", value:meeting.context.lieu },
+            { label:"Timing", value:meeting.context.timing },
+            { label:"Enjeu", value:meeting.context.enjeu },
+            { label:"Relation", value:meeting.context.relation },
+          ].map(item => (
+            <div key={item.label} style={{ background:C.creamMid, borderRadius:8, padding:"10px 12px" }}>
+              <div style={{ fontSize:10, color:C.muted, textTransform:"uppercase",
+                letterSpacing:"0.08em", marginBottom:3 }}>{item.label}</div>
+              <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PHASE PENDANT ─────────────────────────────────────────────────────────────
+function PhasePendant({ meeting, scores }) {
+  const [checked, setChecked] = useState({});
+  const adv = useMemo(() => {
+    if (!meeting || !scores) return null;
+    return getTacticalAdvice(ME, meeting.other, meeting.context, meeting.objectif, scores);
+  }, [meeting, scores]);
+
+  const checklist = [
+    { id:"arrive",  label:"Arriver 5 min avant — installation mentale" },
+    { id:"rapport", label:"Créer le rapport initial (posture, regard, sourire)" },
+    { id:"ecoute",  label:"Écouter activement avant de prendre la parole" },
+    { id:"angle",   label:"Appliquer l'angle d'approche préparé" },
+    { id:"args",    label:"Déployer les arguments clés dans l'ordre" },
+    { id:"signals", label:"Surveiller les signaux comportementaux en temps réel" },
+    { id:"pause",   label:"Laisser les silences exister sans les remplir" },
+    { id:"closing", label:"Proposer une action concrète et datée en clôture" },
+  ];
+  const done = Object.values(checked).filter(Boolean).length;
+
+  const phases = [
+    {
+      title:"Phase 1 — Ouverture (0–3 min)", color:C.blue,
+      items:[
+        adv?.opening || "Posez une question ouverte pour activer la réflexion",
+        "Calibrez l'énergie avant de parler — observez d'abord",
+        "Établissez votre présence par la posture, pas les mots",
+        "Posez un cadre bienveillant dès le départ",
+      ],
+    },
+    {
+      title:"Phase 2 — Développement (3–15 min)", color:C.green,
+      items:[
+        adv?.angle || "Adaptez votre approche au contexte observé",
+        ...(adv?.args?.slice(0,2) || ["Présentez vos arguments clés"]),
+        "Reformulez leurs points pour montrer l'écoute active",
+        "Validez la compréhension avec des questions courtes",
+      ],
+    },
+    {
+      title:"Phase 3 — Clôture", color:C.amber,
+      items:[
+        "Résumez les points d'accord en 2–3 phrases claires",
+        "Proposez une prochaine étape concrète et datée",
+        "Laissez-leur le sentiment d'avoir contribué et gagné",
+        "Terminez quand l'énergie est haute, pas en déclin",
+      ],
+    },
+  ];
+
+  if (!meeting) return null;
+  return (
+    <div>
+      <Card pad={16} style={{ marginBottom:12 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <span style={{ fontSize:14, fontWeight:600 }}>Checklist Tactique</span>
+          <span style={{ fontSize:13, color:done === checklist.length ? C.emerald : C.muted, fontWeight:600 }}>
+            {done}/{checklist.length}
+          </span>
+        </div>
+        {checklist.map(item => (
+          <div key={item.id} onClick={() => setChecked(p => ({...p, [item.id]:!p[item.id]}))}
+            style={{ display:"flex", gap:10, alignItems:"center", padding:"9px 0",
+              borderBottom:`1px solid ${C.creamDark}`, cursor:"pointer" }}>
+            <div style={{ width:20, height:20, borderRadius:4, flexShrink:0,
+              background:checked[item.id] ? C.green : "transparent",
+              border:`2px solid ${checked[item.id] ? C.green : C.border}`,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"all 0.15s" }}>
+              {checked[item.id] && <span style={{ color:"#fff", fontSize:11 }}>✓</span>}
+            </div>
+            <span style={{ fontSize:13, color:checked[item.id] ? C.muted : C.text, lineHeight:1.4,
+              textDecoration:checked[item.id] ? "line-through" : "none" }}>
+              {item.label}
+            </span>
+          </div>
+        ))}
+      </Card>
+
+      {phases.map((phase, i) => (
+        <Card key={i} pad={14} style={{ marginBottom:10 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:phase.color, marginBottom:10,
+            letterSpacing:"0.04em" }}>
+            {phase.title}
+          </div>
+          {phase.items.map((item, j) => (
+            <div key={j} style={{ display:"flex", gap:8, alignItems:"flex-start", marginBottom:7 }}>
+              <span style={{ color:phase.color, flexShrink:0, marginTop:2, fontWeight:700 }}>›</span>
+              <span style={{ fontSize:13, lineHeight:1.5, color:C.text }}>{item}</span>
+            </div>
+          ))}
+        </Card>
+      ))}
+
+      {scores && (
+        <Card pad={14}>
+          <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase",
+            color:C.muted, marginBottom:10 }}>Rappel probabilités</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+            {[
+              { label:"Positif",  v:scores.P_pos, color:C.emerald, bg:C.emeraldPale },
+              { label:"Neutre",   v:scores.P_neu, color:C.amber,   bg:C.amberPale },
+              { label:"Difficile",v:scores.P_neg, color:C.red,     bg:C.redPale },
+            ].map(item => (
+              <div key={item.label} style={{ background:item.bg, borderRadius:8, padding:"8px",
+                textAlign:"center" }}>
+                <div style={{ fontSize:18, fontWeight:700, color:item.color, fontFamily:T.title }}>{item.v}%</div>
+                <div style={{ fontSize:10, color:C.muted }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── PHASE APRÈS ────────────────────────────────────────────────────────────────
+function PhaseApres({ meeting, onUpdate }) {
+  const [outcome,  setOutcome]  = useState("");
+  const [notes,    setNotes]    = useState("");
+  const [followUp, setFollowUp] = useState("");
+
+  const OUTCOMES = [
+    { v:"positif", label:"Positif",  desc:"Objectif atteint",   color:C.emerald, bg:C.emeraldPale },
+    { v:"neutre",  label:"Neutre",   desc:"Résultat mitigé",     color:C.amber,   bg:C.amberPale   },
+    { v:"negatif", label:"Difficile",desc:"Objectif non atteint",color:C.red,     bg:C.redPale     },
+  ];
+
+  const save = () => {
+    if (!outcome) return;
+    onUpdate(prev => ({
+      ...prev,
+      history:[...(prev.history||[]), {
+        id:Date.now(),
+        date:new Date().toLocaleDateString("fr-FR", { day:"numeric", month:"short", year:"numeric" }),
+        outcome, notes, followUp,
+      }],
+    }));
+    setOutcome(""); setNotes(""); setFollowUp("");
+  };
+
+  const textareaStyle = {
+    width:"100%", border:`1px solid ${C.border}`, borderRadius:8,
+    padding:"10px 12px", fontSize:13, lineHeight:1.55, resize:"vertical",
+    background:C.creamMid, color:C.text, fontFamily:T.body,
+  };
+
+  return (
+    <div>
+      <Card pad={16} style={{ marginBottom:14 }}>
+        <div style={{ fontSize:14, fontWeight:600, marginBottom:12 }}>Enregistrer le résultat</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
+          {OUTCOMES.map(o => (
+            <div key={o.v} onClick={() => setOutcome(o.v)} style={{
+              background:outcome===o.v ? o.bg : C.creamMid,
+              border:`2px solid ${outcome===o.v ? o.color : C.border}`,
+              borderRadius:8, padding:"10px 8px", textAlign:"center", cursor:"pointer",
+              transition:"all 0.15s" }}>
+              <div style={{ fontSize:13, fontWeight:700, color:outcome===o.v ? o.color : C.muted }}>{o.label}</div>
+              <div style={{ fontSize:10, color:C.muted, marginTop:3, lineHeight:1.2 }}>{o.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        <textarea value={notes} onChange={e => setNotes(e.target.value)}
+          placeholder="Ce qui s'est passé, observations clés, surprises..."
+          style={{ ...textareaStyle, minHeight:80, marginBottom:10 }}/>
+
+        <input value={followUp} onChange={e => setFollowUp(e.target.value)}
+          placeholder="Suite à donner (action, relance, délai...)"
+          style={{ ...textareaStyle, minHeight:undefined, marginBottom:14 }}/>
+
+        <Btn onClick={save} disabled={!outcome} full>Enregistrer le résultat</Btn>
+      </Card>
+
+      {meeting?.history?.length > 0 && (
+        <div>
+          <div style={{ fontSize:12, fontWeight:600, letterSpacing:"0.1em", textTransform:"uppercase",
+            color:C.muted, marginBottom:10 }}>
+            Historique ({meeting.history.length})
+          </div>
+          {[...meeting.history].reverse().map(entry => {
+            const o = OUTCOMES.find(x => x.v === entry.outcome) || OUTCOMES[1];
+            return (
+              <Card key={entry.id} pad={14} style={{ marginBottom:8 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <span style={{ fontSize:11, color:C.muted }}>{entry.date}</span>
+                  <span style={{ fontSize:11, fontWeight:700, color:o.color,
+                    background:o.bg, padding:"2px 10px", borderRadius:20 }}>
+                    {o.label}
+                  </span>
+                </div>
+                {entry.notes    && <p style={{ fontSize:13, color:C.text, lineHeight:1.55, marginBottom:entry.followUp ? 6 : 0 }}>{entry.notes}</p>}
+                {entry.followUp && <p style={{ fontSize:12, color:C.muted, fontStyle:"italic" }}>→ {entry.followUp}</p>}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CREATE SCREEN ─────────────────────────────────────────────────────────────
+function CreateScreen({ draft, setDraft, onSave, onCancel }) {
+  const [step, setStep]       = useState(0);
+  const [qAnswers, setQAnswers] = useState({});
+  const scrollRef = useRef(null);
+
+  const TOTAL = 2 + Q_MODULES.length + 1; // 0:basic, 1:ctx, 2-5:questionnaire, 6:profile
+
+  const upDraft = (k, v)  => setDraft(p => ({...p, [k]:v}));
+  const upCtx   = (k, v)  => setDraft(p => ({...p, context:{...p.context, [k]:v}}));
+  const upOther = (k, v)  => setDraft(p => ({...p, other:{...p.other, [k]:parseInt(v)}}));
+
+  const answer = (modId, qId, idx) => {
+    setQAnswers(prev => {
+      const next = { ...prev, [modId]:{ ...(prev[modId]||{}), [qId]:idx } };
+      setDraft(d => ({ ...d, other:applyQuestionnaire(next), questionnaire:next }));
+      return next;
+    });
+  };
+
+  const canNext = () => {
+    if (step === 0) return draft.nom.trim().length > 0;
+    if (step >= 2 && step <= 5) {
+      const mod = Q_MODULES[step - 2];
+      return mod.questions.every(q => qAnswers[mod.id]?.[q.id] !== undefined);
+    }
+    return true;
+  };
+
+  const next = () => { if (step < TOTAL - 1) { setStep(s => s+1); scrollRef.current?.scrollTo(0,0); } else onSave(); };
+  const prev = () => { if (step > 0) { setStep(s => s-1); scrollRef.current?.scrollTo(0,0); } };
+
+  const inputStyle = {
+    width:"100%", border:`1px solid ${C.border}`, borderRadius:8, padding:"11px 14px",
+    fontSize:14, background:"#fff", color:C.text, fontFamily:T.body,
+  };
+
+  const Field = ({ label, children, hint }) => (
+    <div style={{ marginBottom:20 }}>
+      <label style={{ display:"block", fontSize:11, fontWeight:600, letterSpacing:"0.1em",
+        textTransform:"uppercase", color:C.muted, marginBottom:8 }}>{label}</label>
+      {hint && <div style={{ fontSize:12, color:C.muted, marginBottom:8, lineHeight:1.4 }}>{hint}</div>}
+      {children}
+    </div>
+  );
+
+  const Selector = ({ options, value, onChange, color }) => (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+      {options.map(opt => (
+        <button key={opt} onClick={() => onChange(opt)} style={{
+          padding:"8px 16px", borderRadius:20, fontFamily:T.body, fontSize:13,
+          border:`1.5px solid ${value===opt ? (color||C.green) : C.border}`,
+          background:value===opt ? (color||C.green)+"1A" : "transparent",
+          color:value===opt ? (color||C.green) : C.muted,
+          fontWeight:value===opt ? 600 : 400, cursor:"pointer", transition:"all 0.15s",
+        }}>
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderStep = () => {
+    if (step === 0) return (
+      <>
+        <div style={{ fontFamily:T.title, fontSize:24, marginBottom:4 }}>Qui rencontrez-vous ?</div>
+        <p style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.5 }}>
+          Informations de base pour commencer l'analyse.
+        </p>
+        <Field label="Nom ou pseudonyme">
+          <input value={draft.nom} onChange={e => upDraft("nom", e.target.value)}
+            placeholder="Ex : Jean-Pierre D., Le DRH, Mon client clé…"
+            style={inputStyle} autoFocus/>
+        </Field>
+        <Field label="Objectif de la réunion">
+          <Selector options={OBJECTIFS} value={draft.objectif} onChange={v => upDraft("objectif", v)}/>
+        </Field>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          <Field label="Date">
+            <input type="date" value={draft.date} onChange={e => upDraft("date", e.target.value)} style={inputStyle}/>
+          </Field>
+          <Field label="Heure">
+            <input type="time" value={draft.heure} onChange={e => upDraft("heure", e.target.value)} style={inputStyle}/>
+          </Field>
+        </div>
+        <Field label="Notes initiales" hint="Contexte particulier, enjeux cachés, historique commun…">
+          <textarea value={draft.notes} onChange={e => upDraft("notes", e.target.value)}
+            placeholder="Tout ce qui peut être utile pour la préparation…"
+            style={{ ...inputStyle, resize:"vertical", minHeight:80 }}/>
+        </Field>
+      </>
+    );
+
+    if (step === 1) return (
+      <>
+        <div style={{ fontFamily:T.title, fontSize:24, marginBottom:4 }}>Quel est le contexte ?</div>
+        <p style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.5 }}>
+          Le contexte pèse 25% du Score Global Réunion.
+        </p>
+        <Field label="Lieu de la réunion">
+          <Selector options={LIEUX} value={draft.context.lieu} onChange={v => upCtx("lieu", v)}/>
+        </Field>
+        <Field label="Timing / Pression temporelle">
+          <Selector options={TIMINGS} value={draft.context.timing} onChange={v => upCtx("timing", v)}/>
+        </Field>
+        <Field label="Niveau d'enjeu">
+          <Selector options={ENJEUX} value={draft.context.enjeu} onChange={v => upCtx("enjeu", v)}/>
+        </Field>
+        <Field label="Qualité de la relation actuelle">
+          <Selector options={RELATIONS} value={draft.context.relation} onChange={v => upCtx("relation", v)}/>
+        </Field>
+      </>
+    );
+
+    if (step >= 2 && step <= 5) {
+      const mod = Q_MODULES[step - 2];
+      return (
+        <>
+          <div style={{ display:"inline-flex", alignItems:"center", gap:8, marginBottom:14 }}>
+            <span style={{ fontSize:11, fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase",
+              color:mod.color, background:mod.color+"1A", padding:"4px 12px", borderRadius:20 }}>
+              Module {step - 1}/4
+            </span>
+            <span style={{ fontSize:14, fontWeight:600, color:mod.color }}>{mod.title}</span>
+          </div>
+          <div style={{ fontFamily:T.title, fontSize:24, marginBottom:4 }}>Analyse comportementale</div>
+          <p style={{ fontSize:13, color:C.muted, marginBottom:24, lineHeight:1.5 }}>{mod.desc}</p>
+
+          {mod.questions.map(q => (
+            <div key={q.id} style={{ marginBottom:26 }}>
+              <div style={{ fontSize:14, fontWeight:500, color:C.text, marginBottom:12, lineHeight:1.45 }}>
+                {q.text}
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {q.options.map((opt, i) => {
+                  const sel = qAnswers[mod.id]?.[q.id] === i;
+                  return (
+                    <button key={i} onClick={() => answer(mod.id, q.id, i)} style={{
+                      padding:"12px 16px", borderRadius:10, textAlign:"left",
+                      border:`1.5px solid ${sel ? mod.color : C.border}`,
+                      background:sel ? mod.color+"12" : "#fff",
+                      color:sel ? mod.color : C.text, fontSize:13,
+                      cursor:"pointer", fontFamily:T.body, fontWeight:sel ? 600 : 400,
+                      transition:"all 0.15s", lineHeight:1.4,
+                    }}>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </>
+      );
+    }
+
+    if (step === 6) {
+      const scores = ScoringEngine.calcAll(ME, draft.other, draft.context, draft.objectif);
+      return (
+        <>
+          <div style={{ fontFamily:T.title, fontSize:24, marginBottom:4 }}>Profil estimé</div>
+          <p style={{ fontSize:13, color:C.muted, marginBottom:20, lineHeight:1.5 }}>
+            Affinez manuellement si vous avez des informations supplémentaires.
+          </p>
+          <CalcPanel scores={scores}/>
+          <div style={{ height:20 }}/>
+          {Object.entries(AXIS).map(([k, { label, lo, hi }]) => (
+            <div key={k} style={{ marginBottom:18 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                <span style={{ fontSize:13, fontWeight:500 }}>{label}</span>
+                <span style={{ fontSize:13, fontWeight:700, color:C.green }}>{draft.other[k]}</span>
+              </div>
+              <input type="range" min="0" max="100" value={draft.other[k]}
+                onChange={e => upOther(k, e.target.value)}/>
+              <div style={{ display:"flex", justifyContent:"space-between", marginTop:4 }}>
+                <span style={{ fontSize:10, color:C.muted }}>{lo}</span>
+                <span style={{ fontSize:10, color:C.muted }}>{hi}</span>
+              </div>
+            </div>
+          ))}
+        </>
+      );
+    }
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.cream, display:"flex", flexDirection:"column" }}>
+      <div style={{ position:"sticky", top:0, zIndex:100, background:C.cream,
+        borderBottom:`1px solid ${C.border}`, padding:"14px 20px 12px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+          maxWidth:560, margin:"0 auto", marginBottom:12 }}>
+          <Btn variant="ghost" small onClick={onCancel}>← Annuler</Btn>
+          <span style={{ fontSize:12, color:C.muted, fontWeight:500 }}>{step+1} / {TOTAL}</span>
+        </div>
+        <div style={{ maxWidth:560, margin:"0 auto" }}>
+          <div style={{ height:3, background:C.border, borderRadius:2 }}>
+            <div style={{ height:"100%", width:`${((step+1)/TOTAL)*100}%`,
+              background:C.green, borderRadius:2, transition:"width 0.35s ease" }}/>
+          </div>
+        </div>
+      </div>
+
+      <div ref={scrollRef} style={{ flex:1, overflowY:"auto", padding:"24px 20px" }}>
+        <div style={{ maxWidth:560, margin:"0 auto" }}>
+          {renderStep()}
+          <div style={{ height:80 }}/>
+        </div>
+      </div>
+
+      <div style={{ position:"sticky", bottom:0, background:C.cream,
+        borderTop:`1px solid ${C.border}`, padding:"14px 20px" }}>
+        <div style={{ display:"flex", gap:10, maxWidth:560, margin:"0 auto" }}>
+          {step > 0 && (
+            <Btn variant="ghost" onClick={prev} style={{ flex:1 }}>← Précédent</Btn>
+          )}
+          <Btn onClick={next} disabled={!canNext()} style={{ flex:2 }}>
+            {step === TOTAL - 1 ? "Créer la fiche ✓" : "Suivant →"}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MEETING DETAIL SCREEN ─────────────────────────────────────────────────────
+function MeetingDetailScreen({ meeting, myProfile, onBack, onUpdate }) {
+  const [activeTab, setActiveTab] = useState("fiche");
+  const scores = useMemo(() => {
+    if (!meeting?.other) return null;
+    return ScoringEngine.calcAll(myProfile, meeting.other, meeting.context, meeting.objectif);
+  }, [meeting, myProfile]);
+
+  const cd = countdown(meeting.date, meeting.heure);
+  const TABS = [
+    { id:"fiche",   label:"Fiche"   },
+    { id:"pendant", label:"Pendant" },
+    { id:"apres",   label:"Après"   },
+  ];
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.cream }}>
+      <div style={{ position:"sticky", top:0, zIndex:100, background:C.cream,
+        borderBottom:`1px solid ${C.border}` }}>
+        <div style={{ padding:"12px 20px 0", maxWidth:640, margin:"0 auto" }}>
+          <button onClick={onBack} style={{ background:"none", border:"none",
+            color:C.muted, fontSize:13, cursor:"pointer", fontFamily:T.body,
+            padding:"0 0 10px 0", display:"block" }}>
+            ← Tableau de bord
+          </button>
+          <div style={{ display:"flex", justifyContent:"space-between",
+            alignItems:"flex-start", marginBottom:14 }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontFamily:T.title, fontSize:26, marginBottom:2,
+                overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {meeting.nom}
+              </div>
+              <div style={{ fontSize:12, color:C.muted, lineHeight:1.5 }}>
+                {meeting.objectif}
+                {meeting.date && ` · ${fmtDate(meeting.date)}`}
+                {meeting.heure && ` à ${meeting.heure}`}
+              </div>
+              {cd && (
+                <div style={{ fontSize:12, marginTop:3, fontWeight:600,
+                  color:cd === "Passée" ? C.muted : C.amber }}>
+                  {cd}
+                </div>
+              )}
+            </div>
+            {scores && (
+              <div style={{ background:SGRbg(scores.SGR), borderRadius:10,
+                padding:"8px 16px", textAlign:"center", marginLeft:12, flexShrink:0 }}>
+                <div style={{ fontSize:26, fontWeight:700, color:SGRc(scores.SGR), fontFamily:T.title, lineHeight:1 }}>
+                  {scores.SGR}
+                </div>
+                <div style={{ fontSize:9, color:C.muted, marginTop:2, textTransform:"uppercase",
+                  letterSpacing:"0.08em" }}>SGR</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"flex" }}>
+            {TABS.map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                flex:1, padding:"10px 0", border:"none", background:"transparent",
+                color:activeTab===tab.id ? C.green : C.muted,
+                fontFamily:T.body, fontSize:13,
+                fontWeight:activeTab===tab.id ? 600 : 400, cursor:"pointer",
+                borderBottom:`2px solid ${activeTab===tab.id ? C.green : "transparent"}`,
+                transition:"all 0.15s",
+              }}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding:"20px", maxWidth:640, margin:"0 auto" }}>
+        {activeTab === "fiche"   && <FichePrepa  meeting={meeting} scores={scores} myProfile={myProfile}/>}
+        {activeTab === "pendant" && <PhasePendant meeting={meeting} scores={scores}/>}
+        {activeTab === "apres"   && <PhaseApres   meeting={meeting} onUpdate={onUpdate}/>}
+      </div>
+    </div>
+  );
+}
+
+// ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
+function DashboardScreen({ meetings, myProfile, onCreate, onOpen }) {
+  const [search, setSearch] = useState("");
+
+  const stats = useMemo(() => {
+    if (!meetings.length) return null;
+    const sgrs = meetings.map(m => m.scores?.SGR || 0);
+    const avg  = Math.round(sgrs.reduce((a,b) => a+b, 0) / sgrs.length);
+    const upcoming = meetings.filter(m => {
+      if (!m.date) return false;
+      return new Date(m.date + "T" + (m.heure||"00:00")) > new Date();
+    }).length;
+    return { total:meetings.length, avg, upcoming };
+  }, [meetings]);
+
+  const filtered = useMemo(() =>
+    meetings.filter(m =>
+      m.nom.toLowerCase().includes(search.toLowerCase()) ||
+      m.objectif.toLowerCase().includes(search.toLowerCase())
+    ), [meetings, search]);
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.cream }}>
+      <div style={{ background:C.cream, borderBottom:`1px solid ${C.border}`, padding:"24px 20px 0" }}>
+        <div style={{ maxWidth:600, margin:"0 auto" }}>
+          <div style={{ display:"flex", justifyContent:"space-between",
+            alignItems:"flex-start", marginBottom:6 }}>
+            <div>
+              <div style={{ fontFamily:T.title, fontSize:32, lineHeight:1.1 }}>My Brain</div>
+              <div style={{ fontSize:13, color:C.muted, marginTop:5 }}>
+                Réunions stratégiques · {myProfile.nom}
+              </div>
+            </div>
+            <Btn onClick={onCreate} small>+ Nouvelle</Btn>
+          </div>
+
+          {stats && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr",
+              gap:10, margin:"18px 0" }}>
+              {[
+                { label:"Réunions",  v:stats.total,    color:C.green },
+                { label:"SGR moyen", v:stats.avg,      color:SGRc(stats.avg) },
+                { label:"À venir",   v:stats.upcoming, color:C.amber },
+              ].map(item => (
+                <div key={item.label} style={{ background:"#fff", border:`1px solid ${C.border}`,
+                  borderRadius:10, padding:"12px", textAlign:"center",
+                  boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
+                  <div style={{ fontSize:24, fontWeight:700, color:item.color, fontFamily:T.title }}>{item.v}</div>
+                  <div style={{ fontSize:11, color:C.muted, marginTop:3 }}>{item.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {meetings.length > 0 && (
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher une réunion…"
+              style={{ width:"100%", border:`1px solid ${C.border}`, borderRadius:8,
+                padding:"9px 14px", fontSize:13, background:"#fff", color:C.text,
+                fontFamily:T.body }}/>
+          )}
+          <div style={{ height:16 }}/>
+        </div>
+      </div>
+
+      <div style={{ padding:"16px 20px", maxWidth:600, margin:"0 auto" }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"60px 20px" }}>
+            <div style={{ fontSize:48, marginBottom:16 }}>🧠</div>
+            <div style={{ fontFamily:T.title, fontSize:26, marginBottom:8 }}>
+              {meetings.length === 0 ? "Aucune réunion" : "Aucun résultat"}
+            </div>
+            <div style={{ fontSize:13, color:C.muted, marginBottom:28, lineHeight:1.7 }}>
+              {meetings.length === 0
+                ? "Créez votre première fiche de réunion stratégique\net préparez chaque interaction avec précision."
+                : "Aucune réunion ne correspond à votre recherche."}
+            </div>
+            {meetings.length === 0 && (
+              <Btn onClick={onCreate}>Créer ma première réunion</Btn>
+            )}
+          </div>
+        ) : filtered.map(meeting => {
+          const cd      = countdown(meeting.date, meeting.heure);
+          const s       = meeting.scores;
+          const isPast  = meeting.date && new Date(meeting.date+"T"+(meeting.heure||"00:00")) < new Date();
+          const lastOut = meeting.history?.length > 0 ? meeting.history[meeting.history.length-1].outcome : null;
+          const outColors = { positif:[C.emerald, C.emeraldPale], neutre:[C.amber, C.amberPale], negatif:[C.red, C.redPale] };
+
+          return (
+            <div key={meeting.id} onClick={() => onOpen(meeting)}
+              style={{ background:"#fff", border:`1px solid ${C.border}`, borderRadius:12,
+                padding:"14px 16px", marginBottom:10, cursor:"pointer",
+                boxShadow:"0 1px 4px rgba(0,0,0,0.04)", transition:"box-shadow 0.15s" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div style={{ flex:1, minWidth:0, marginRight:12 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:15, fontWeight:600, color:C.text }}>{meeting.nom}</span>
+                    {lastOut && (
+                      <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:20,
+                        background:outColors[lastOut]?.[1]||C.amberPale,
+                        color:outColors[lastOut]?.[0]||C.amber }}>
+                        {lastOut === "positif" ? "✓ Positif" : lastOut === "neutre" ? "~ Neutre" : "✕ Difficile"}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:12, color:C.muted }}>
+                    {meeting.objectif}
+                    {meeting.date && ` · ${fmtDate(meeting.date)}`}
+                  </div>
+                  {cd && (
+                    <div style={{ fontSize:12, marginTop:4, fontWeight:600,
+                      color:cd==="Passée"||isPast ? C.muted : C.amber }}>
+                      {cd}
+                    </div>
+                  )}
+                </div>
+                {s && (
+                  <div style={{ textAlign:"center", flexShrink:0 }}>
+                    <div style={{ fontSize:22, fontWeight:700, color:SGRc(s.SGR), fontFamily:T.title, lineHeight:1 }}>
+                      {s.SGR}
+                    </div>
+                    <div style={{ fontSize:9, color:C.muted, textTransform:"uppercase",
+                      letterSpacing:"0.06em", marginTop:2 }}>SGR</div>
+                  </div>
+                )}
+              </div>
+              {s && (
+                <div style={{ marginTop:10, height:3, background:C.creamDark, borderRadius:2 }}>
+                  <div style={{ height:"100%", width:`${s.SGR}%`, background:SGRc(s.SGR), borderRadius:2 }}/>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── APP ────────────────────────────────────────────────────────────────────────
+function App() {
+  const [screen,   setScreen]   = useState("dashboard");
+  const [meetings, setMeetings] = useState([]);
+  const [current,  setCurrent]  = useState(null);
+  const [draft,    setDraft]    = useState({...EMPTY});
+  const myProfile = useMemo(() => ME, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("mybrain_meetings_v2");
+      if (saved) setMeetings(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("mybrain_meetings_v2", JSON.stringify(meetings));
+  }, [meetings]);
+
+  const saveMeeting = useCallback(() => {
+    const s = ScoringEngine.calcAll(myProfile, draft.other, draft.context, draft.objectif);
+    const m = { ...draft, id:Date.now(), scores:s };
+    setMeetings(prev => [m, ...prev]);
+    setCurrent(m);
+    setScreen("meeting");
+    setDraft({...EMPTY});
+  }, [draft, myProfile]);
+
+  const updateCurrent = useCallback((updater) => {
+    setCurrent(prev => {
+      if (!prev) return prev;
+      const updated = typeof updater === "function" ? updater(prev) : updater;
+      setMeetings(ms => ms.map(m => m.id === updated.id ? updated : m));
+      return updated;
+    });
+  }, []);
+
+  if (screen === "create") return (
+    <CreateScreen
+      draft={draft} setDraft={setDraft}
+      onSave={saveMeeting}
+      onCancel={() => { setScreen("dashboard"); setDraft({...EMPTY}); }}
+    />
+  );
+
+  if (screen === "meeting" && current) return (
+    <MeetingDetailScreen
+      meeting={current} myProfile={myProfile}
+      onBack={() => setScreen("dashboard")}
+      onUpdate={updateCurrent}
+    />
+  );
+
+  return (
+    <DashboardScreen
+      meetings={meetings} myProfile={myProfile}
+      onCreate={() => { setDraft({...EMPTY}); setScreen("create"); }}
+      onOpen={m => { setCurrent(m); setScreen("meeting"); }}
+    />
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
