@@ -58,6 +58,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#06080b;color:#ede9e
 .cit{padding:9px 12px;border-left:2px solid;background:rgba(255,255,255,0.015);margin:4px 0 8px}
 .citt{font-family:'Cormorant Garamond',serif;font-size:0.85rem;font-style:italic;line-height:1.8;font-weight:300}
 .evo{font-size:0.66rem;line-height:1.85;color:rgba(237,233,225,0.45);font-weight:300}
+
+/* Meeting nav */
+#meeting-nav{position:fixed;bottom:20px;right:20px;z-index:200;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:auto}
+#meeting-badge{font-size:0.42rem;letter-spacing:0.15em;text-transform:uppercase;color:#5aaa7a;background:rgba(6,8,11,0.9);border:1px solid rgba(90,170,122,0.28);border-radius:2px;padding:3px 9px;display:none;animation:bl 2.5s infinite}
+#meeting-badge.show{display:block}
+#meeting-link{font-family:'DM Mono',monospace;font-size:0.46rem;letter-spacing:0.14em;color:rgba(237,233,225,0.44);background:rgba(6,8,11,0.85);border:1px solid rgba(255,255,255,0.08);border-radius:3px;padding:6px 12px;text-decoration:none;transition:all 0.35s;text-transform:uppercase;white-space:nowrap}
+#meeting-link:hover{color:rgba(237,233,225,0.82);border-color:rgba(255,255,255,0.22)}
 </style>
 </head>
 <body>
@@ -78,6 +85,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#06080b;color:#ede9e
 <svg id="svgl" xmlns="http://www.w3.org/2000/svg"></svg>
 
 <div id="hint">Pincer pour zoomer · Glisser pour tourner · Taper sur une zone</div>
+
+<div id="meeting-nav">
+  <div id="meeting-badge">⚡ Réunion active</div>
+  <a id="meeting-link" href="meeting.html">Réunions Stratégiques →</a>
+</div>
 
 <div id="panel">
   <div class="dh"></div>
@@ -433,6 +445,40 @@ function animate(){
   renderer.render(scene, camera);
 }
 animate();
+
+// ── Zones from meeting ────────────────────────────────────────────────────────
+const ZONE_NAME_TO_ID = {
+  "Lobe frontal":"frontal","Lobe pariétal":"parietal","Lobe temporal":"temporal",
+  "Lobe occipital":"occipital","Cortex moteur":"moteur","Amygdale":"amygdale",
+  "Hippocampe":"hippocampe","Système dopaminergique":"dopamine",
+};
+
+function highlightBrainZones(activeZones, explications) {
+  if (!activeZones || !activeZones.length) {
+    document.getElementById('meeting-badge').classList.remove('show');
+    return;
+  }
+  document.getElementById('meeting-badge').classList.add('show');
+  activeZones.forEach(name => {
+    const id = ZONE_NAME_TO_ID[name];
+    if (id && highlights[id]) {
+      highlights[id].material.emissiveIntensity = 2.2;
+      highlights[id].material.opacity = 0.72;
+    }
+  });
+}
+
+window.addEventListener('brainZonesUpdated', e => {
+  highlightBrainZones(e.detail.activeZones, e.detail.explications);
+});
+
+try {
+  const saved = localStorage.getItem('mybrain_active_zones');
+  if (saved) {
+    const { activeZones, explications } = JSON.parse(saved);
+    setTimeout(() => highlightBrainZones(activeZones, explications), 500);
+  }
+} catch (_) {}
 
 // Resize
 window.addEventListener('resize', ()=>{
